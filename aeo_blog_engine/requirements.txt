@@ -1,0 +1,10 @@
+agno
+qdrant-client
+openai
+pydantic
+python-dotenv
+sqlalchemy
+psycopg2-binary
+google-generativeai
+Flask
+duckduckgo-search
