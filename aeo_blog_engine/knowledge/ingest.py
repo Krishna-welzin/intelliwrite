@@ -9,10 +9,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 
 from knowledge.knowledge_base import get_knowledge_base
 from qdrant_client.http.models import PointStruct, models # Import Qdrant models
+try:
+    from pypdf import PdfReader
+except ImportError:
+    PdfReader = None
 
 def ingest_docs(): # No longer async
     """
-    Reads markdown/text files from the docs/ directory, embeds them, and loads them directly into Qdrant.
+    Reads markdown/text/pdf files from the docs/ directory, embeds them, and loads them directly into Qdrant.
     """
     vector_db = get_knowledge_base() # This is the agno.vectordb.qdrant.Qdrant instance
     qdrant_client = vector_db.client # Get the underlying QdrantClient
@@ -28,16 +32,38 @@ def ingest_docs(): # No longer async
 
     for root, _, files in os.walk(docs_dir):
         for file_name in files:
+            content = ""
+            file_path = Path(root) / file_name
+
             if file_name.endswith(".md") or file_name.endswith(".txt"):
-                file_path = Path(root) / file_name
-                print(f"Found: {file_path}")
-                
+                print(f"Found text file: {file_path}")
                 try:
                     content = file_path.read_text(encoding='utf-8')
-                    if not content.strip():
-                        print(f"Skipping empty file: {file_path}")
-                        continue
+                except Exception as e:
+                    print(f"Error reading text file {file_path}: {e}")
+                    continue
+            
+            elif file_name.endswith(".pdf"):
+                print(f"Found PDF file: {file_path}")
+                if PdfReader is None:
+                    print(f"Skipping PDF {file_path}: pypdf not installed.")
+                    continue
+                try:
+                    reader = PdfReader(str(file_path))
+                    for page in reader.pages:
+                        text = page.extract_text()
+                        if text:
+                            content += text + "\n"
+                except Exception as e:
+                    print(f"Error reading PDF file {file_path}: {e}")
+                    continue
+            
+            if content:
+                if not content.strip():
+                    print(f"Skipping empty file: {file_path}")
+                    continue
 
+                try:
                     # Generate embedding for the entire file content
                     # For larger files, a proper chunking strategy would be needed.
                     # For now, we'll embed the whole file content.
@@ -54,7 +80,7 @@ def ingest_docs(): # No longer async
                         }
                     ))
                 except Exception as e:
-                    print(f"Error processing file {file_path}: {e}")
+                    print(f"Error embedding/processing file {file_path}: {e}")
 
     if points_to_upsert:
         print(f"Upserting {len(points_to_upsert)} points to Qdrant collection '{collection_name}'...")
