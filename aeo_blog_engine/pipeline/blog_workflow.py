@@ -1,21 +1,24 @@
 from agents import get_researcher_agent, get_planner_agent, get_writer_agent, get_optimizer_agent, get_base_model
 from agno.agent import Agent
+from langfuse import observe, Langfuse
+
+# Initialize Langfuse client
+langfuse = Langfuse()
 
 class AEOBlogPipeline:
     def __init__(self):
         print("Initializing AEO Blog Pipeline with Agno Agents...")
 
+    @observe()
     def run(self, topic: str):
         print(f"--- Starting AEO Blog Generation for: {topic} ---")
 
         # 1. Research
         print("\n[1/5] Researching...")
         researcher = get_researcher_agent()
-        # Ensure we get the full response, not a stream
         research_response = researcher.run(f"Research key facts, statistics, and user questions about: {topic}", stream=False)
         research_summary = research_response.content
-        print(f"Research completed ({len(research_summary)} chars).")
-
+        
         # 2. Plan
         print("\n[2/5] Planning...")
         planner = get_planner_agent()
@@ -46,6 +49,29 @@ class AEOBlogPipeline:
         )
         final_response = finalizer.run(f"Draft:\n{draft}\n\nOptimization Suggestions:\n{optimization_report}\n\nProduce the Final Blog Post.", stream=False)
         
+        # --- Capture Aggregate Token Usage ---
+        try:
+            # Agno responses contain metadata with usage information
+            total_input_tokens = 0
+            total_output_tokens = 0
+            
+            responses = [research_response, plan_response, draft_response, opt_response, final_response]
+            for resp in responses:
+                if hasattr(resp, 'metrics') and resp.metrics:
+                    total_input_tokens += getattr(resp.metrics, "input_tokens", 0)
+                    total_output_tokens += getattr(resp.metrics, "output_tokens", 0)
+            
+            # Update the current span with the token counts in metadata
+            langfuse.update_current_span(
+                metadata={
+                    "total_input_tokens": total_input_tokens,
+                    "total_output_tokens": total_output_tokens,
+                    "total_tokens": total_input_tokens + total_output_tokens
+                }
+            )
+        except Exception as e:
+            print(f"Note: Could not capture token usage: {e}")
+
         return final_response.content
 
 if __name__ == "__main__":
@@ -53,3 +79,6 @@ if __name__ == "__main__":
     result = pipeline.run("What Is Answer Engine Optimization?")
     print("\n\n--- FINAL AEO BLOG CONTENT ---\n")
     print(result)
+    
+    # Flush Langfuse traces before exiting
+    langfuse.flush()

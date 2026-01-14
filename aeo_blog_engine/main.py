@@ -1,7 +1,7 @@
 import argparse
 
 from knowledge.ingest import ingest_docs
-from pipeline.blog_workflow import AEOBlogPipeline
+from pipeline.blog_workflow import AEOBlogPipeline, langfuse
 from services import generate_and_store_blog
 
 
@@ -35,6 +35,9 @@ def main():
     else:
         if not args.ingest:
             parser.print_help()
+            
+    # Ensure Langfuse traces are sent
+    langfuse.flush()
 
 
 if __name__ == "__main__":
