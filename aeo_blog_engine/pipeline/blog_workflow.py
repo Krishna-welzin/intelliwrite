@@ -61,14 +61,24 @@ class AEOBlogPipeline:
                     total_input_tokens += getattr(resp.metrics, "input_tokens", 0)
                     total_output_tokens += getattr(resp.metrics, "output_tokens", 0)
             
-            # Update the current span with the token counts in metadata
-            langfuse.update_current_span(
-                metadata={
-                    "total_input_tokens": total_input_tokens,
-                    "total_output_tokens": total_output_tokens,
+            # Record a "Generation" to represent the total LLM usage for this pipeline run.
+            generation = langfuse.start_generation(
+                name="Total_Pipeline_Usage",
+                model="gemini-flash-latest",
+                input=topic,
+                output=final_response.content,
+                usage_details={
+                    "prompt_tokens": total_input_tokens,
+                    "completion_tokens": total_output_tokens,
                     "total_tokens": total_input_tokens + total_output_tokens
+                },
+                metadata={
+                    "source": "agno-agent-aggregation"
                 }
             )
+            generation.end()
+
+            
         except Exception as e:
             print(f"Note: Could not capture token usage: {e}")
 
