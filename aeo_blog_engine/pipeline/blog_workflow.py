@@ -1,4 +1,4 @@
-from aeo_blog_engine.agents import get_researcher_agent, get_planner_agent, get_writer_agent, get_optimizer_agent, get_base_model, get_reddit_agent, get_linkedin_agent, get_twitter_agent, get_social_qa_agent
+from aeo_blog_engine.agents import get_researcher_agent, get_planner_agent, get_writer_agent, get_optimizer_agent, get_base_model, get_reddit_agent, get_linkedin_agent, get_twitter_agent, get_social_qa_agent, get_topic_generator_agent
 from agno.agent import Agent
 from langfuse import observe, Langfuse
 
@@ -10,8 +10,25 @@ class AEOBlogPipeline:
         print("Initializing AEO Blog Pipeline with Agno Agents...")
 
     @observe()
-    def run(self, topic: str):
-        print(f"--- Starting AEO Blog Generation for: {topic} ---")
+    def run(self, topic: str = None, prompt: str = None):
+        if not topic and not prompt:
+            raise ValueError("Either 'topic' or 'prompt' must be provided.")
+
+        print(f"--- Starting AEO Blog Generation ---")
+        
+        total_input_tokens = 0
+        total_output_tokens = 0
+        
+        # 0. Topic Generation (if needed)
+        topic_gen_response = None
+        if prompt and not topic:
+            print(f"\n[0/5] Generating Topic from Prompt: '{prompt}'...")
+            topic_generator = get_topic_generator_agent()
+            topic_gen_response = topic_generator.run(f"Generate a blog topic for: {prompt}", stream=False)
+            topic = topic_gen_response.content.strip()
+            print(f"Generated Topic: {topic}")
+
+        print(f"Target Topic: {topic}")
 
         # 1. Research
         print("\n[1/5] Researching...")
@@ -53,10 +70,10 @@ class AEOBlogPipeline:
         # --- Capture Aggregate Token Usage ---
         try:
             # Agno responses contain metadata with usage information
-            total_input_tokens = 0
-            total_output_tokens = 0
-            
             responses = [research_response, plan_response, draft_response, opt_response, final_response]
+            if topic_gen_response:
+                responses.insert(0, topic_gen_response)
+                
             for resp in responses:
                 if hasattr(resp, 'metrics') and resp.metrics:
                     total_input_tokens += getattr(resp.metrics, "input_tokens", 0)
@@ -66,7 +83,7 @@ class AEOBlogPipeline:
             generation = langfuse.start_generation(
                 name="Total_Pipeline_Usage",
                 model="gemini-flash-latest",
-                input=topic,
+                input=prompt if prompt else topic,
                 output=final_response.content,
                 usage_details={
                     "prompt_tokens": total_input_tokens,
@@ -74,7 +91,8 @@ class AEOBlogPipeline:
                     "total_tokens": total_input_tokens + total_output_tokens
                 },
                 metadata={
-                    "source": "agno-agent-aggregation"
+                    "source": "agno-agent-aggregation",
+                    "generated_topic": topic if prompt else None
                 }
             )
             generation.end()
@@ -83,7 +101,18 @@ class AEOBlogPipeline:
         except Exception as e:
             print(f"Note: Could not capture token usage: {e}")
 
+        # If run via prompt, we might want to return the topic too, but for now return content as per signature
+        # To handle saving, the caller might need the topic. 
+        # But `run` traditionally returns content. 
+        # We will attach the topic to the final string via a property or tuple if possible?
+        # Actually, let's keep it simple: return content. The Service layer handles DB updates.
         return final_response.content
+
+    def generate_topic_only(self, prompt: str) -> str:
+        """Helper to just generate a topic without running the full pipeline."""
+        topic_generator = get_topic_generator_agent()
+        response = topic_generator.run(f"Generate a blog topic for: {prompt}", stream=False)
+        return response.content.strip()
 
     # ----------------- Social Media Posts -----------------
 

@@ -420,3 +420,27 @@ def get_social_qa_agent():
     """
     )
 
+def get_topic_generator_agent():
+    model = get_model(Config.PLANNER_PROVIDER, Config.PLANNER_MODEL, Config.PLANNER_API_KEY)
+    return create_agent(
+        name="Topic Generator Agent",
+        model=model,
+        system_instruction="""Role Definition:
+    You are the Topic Generator Agent. Your goal is to convert a raw, vague, or casual user prompt into a precise, high-quality, AEO-optimized blog topic.
+
+    Primary Objectives:
+    - Analyze the user's intent.
+    - Formulate a clear, engaging, and search-friendly blog title.
+    - Ensure the topic is suitable for an Answer Engine Optimization (AEO) strategy (i.e., answerable, specific, and authoritative).
+
+    Input:
+    - User Prompt (e.g., "write about how fast shoes are getting")
+
+    Output:
+    - Return ONLY the final topic string. No "Here is the topic" or quotes.
+    
+    Example Input: "why is everyone using ai now"
+    Example Output: The Rise of AI: Why Artificial Intelligence Adoption is Exploding in 2026
+    """
+    )
+

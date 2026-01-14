@@ -1,8 +1,8 @@
 import argparse
 
-from knowledge.ingest import ingest_docs
-from pipeline.blog_workflow import AEOBlogPipeline, langfuse
-from services import generate_and_store_blog, store_social_post
+from aeo_blog_engine.knowledge.ingest import ingest_docs
+from aeo_blog_engine.pipeline.blog_workflow import AEOBlogPipeline, langfuse
+from aeo_blog_engine.services import generate_and_store_blog, store_social_post
 
 
 def main():
@@ -17,6 +17,11 @@ def main():
         "--topic",
         type=str,
         help="Topic to generate a blog for"
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        help="Raw prompt to convert into a blog topic (e.g. 'write about fast shoes')"
     )
     parser.add_argument(
         "--company-url",
@@ -45,19 +50,29 @@ def main():
     if args.ingest:
         ingest_docs()
 
-    if args.topic:
-        # Initialize pipeline once
+    # Determine topic: use provided arg, or generate from prompt
+    topic = args.topic
+    
+    # Initialize pipeline once if we have work to do
+    pipeline = None
+    if args.topic or args.prompt:
         pipeline = AEOBlogPipeline()
+        
+        if args.prompt and not topic:
+            print(f"Generating topic from prompt: '{args.prompt}'...")
+            topic = pipeline.generate_topic_only(args.prompt)
+            print(f"-> Generated Topic: {topic}")
 
+    if topic:
         if args.platform:
             # Generate social media post
-            post = pipeline.run_social_post(args.topic, args.platform)
+            post = pipeline.run_social_post(topic, args.platform)
             print(f"\n--- {args.platform.upper()} POST ---\n")
             print(post)
             
             # Save to database
             try:
-                saved = store_social_post(args.topic, args.platform, post)
+                saved = store_social_post(topic, args.platform, post)
                 print(f"\n[DB] Saved {args.platform} post to Blog ID: {saved['id']}")
             except Exception as e:
                 print(f"\n[DB Error] Could not save post: {e}")
@@ -65,19 +80,21 @@ def main():
         elif args.company_url:
             # Generate blog and store it
             payload = {
-                "topic": args.topic,
+                "topic": topic,
+                "prompt": args.prompt, # Pass prompt for context/logging if needed
                 "company_url": args.company_url,
                 "email_id": args.email,
                 "brand_name": args.brand,
             }
+            # Note: generate_and_store_blog will re-run generation.
+            # Since we already have the topic, we just pass it as 'topic'.
+            # It will skip re-generation of topic because 'topic' is present.
             result = generate_and_store_blog(payload)
             print(result)
 
         else:
-            # Generate blog only (CLI run without saving implies dry run, but let's be safe)
-            # If user wants to save, they should provide company-url, or we can assume a default.
-            # For now, we follow existing logic: just print.
-            result = pipeline.run(args.topic)
+            # Generate blog only
+            result = pipeline.run(topic)
             print("\n--- BLOG CONTENT ---\n")
             print(result)
 

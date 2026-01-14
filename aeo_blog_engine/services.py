@@ -8,12 +8,22 @@ pipeline = AEOBlogPipeline()
 
 
 def generate_and_store_blog(payload: Dict) -> Dict:
-    required_fields = ["topic", "company_url"]
-    for field in required_fields:
-        if not payload.get(field):
-            raise ValueError(f"Missing required field: {field}")
+    # Allow prompt instead of topic
+    if not payload.get("topic") and not payload.get("prompt"):
+        raise ValueError("Missing required field: 'topic' or 'prompt'")
+    
+    if not payload.get("company_url"):
+        raise ValueError("Missing required field: 'company_url'")
 
-    topic = payload["topic"].strip()
+    topic = payload.get("topic")
+    prompt = payload.get("prompt")
+    
+    # Step 0: If only prompt is provided, generate the topic first
+    if prompt and not topic:
+        # Use the pipeline helper to generate the topic
+        topic = pipeline.generate_topic_only(prompt)
+
+    topic = topic.strip()
     company_url = payload["company_url"].strip()
     email_id = payload.get("email_id")
     brand_name = payload.get("brand_name")
@@ -30,6 +40,7 @@ def generate_and_store_blog(payload: Dict) -> Dict:
         blog_id = blog_entry.id
 
     try:
+        # Run the pipeline with the finalized topic
         blog_content = pipeline.run(topic)
         with get_session() as session:
             updated = update_blog_status(
