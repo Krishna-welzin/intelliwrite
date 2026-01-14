@@ -4,10 +4,7 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-# Add the project root to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-
-from knowledge.knowledge_base import get_knowledge_base
+from aeo_blog_engine.knowledge.knowledge_base import get_knowledge_base
 from qdrant_client.http.models import PointStruct, models # Import Qdrant models
 try:
     from pypdf import PdfReader

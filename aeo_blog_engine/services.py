@@ -1,7 +1,7 @@
 from typing import Dict
 
-from database import create_blog_entry, get_blog_by_id, get_session, update_blog_status
-from pipeline.blog_workflow import AEOBlogPipeline
+from aeo_blog_engine.database import create_blog_entry, get_blog_by_id, get_session, update_blog_status, save_social_post, Blog
+from aeo_blog_engine.pipeline.blog_workflow import AEOBlogPipeline
 
 
 pipeline = AEOBlogPipeline()
@@ -55,3 +55,25 @@ def fetch_blog(blog_id: int) -> Dict:
         if not blog:
             raise ValueError(f"Blog with id {blog_id} not found")
         return blog.to_dict()
+
+
+def store_social_post(topic: str, platform: str, content: str) -> Dict:
+    """
+    Finds the latest blog entry for the given topic and updates it with the social post.
+    If no blog entry exists, it creates a new placeholder entry.
+    """
+    with get_session() as session:
+        # Find latest blog for this topic
+        blog = session.query(Blog).filter(Blog.topic == topic).order_by(Blog.created_at.desc()).first()
+        
+        if not blog:
+            # Create a placeholder entry if none exists (fallback)
+            blog = create_blog_entry(
+                session,
+                topic=topic,
+                company_url="unknown", # Placeholder
+                status="SOCIAL_ONLY"
+            )
+        
+        updated_blog = save_social_post(session, blog.id, platform, content)
+        return updated_blog.to_dict()

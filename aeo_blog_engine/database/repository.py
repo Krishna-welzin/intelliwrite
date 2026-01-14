@@ -30,3 +30,21 @@ def update_blog_status(session, blog_id, *, status, blog_content=None):
 
     session.add(blog)
     return blog
+
+
+def save_social_post(session, blog_id, platform, content):
+    blog = get_blog_by_id(session, blog_id)
+    if not blog:
+        raise ValueError(f"Blog with id {blog_id} not found")
+
+    if platform.lower() == "twitter":
+        blog.twitter_post = content
+    elif platform.lower() == "linkedin":
+        blog.linkedin_post = content
+    elif platform.lower() == "reddit":
+        blog.reddit_post = content
+    else:
+        raise ValueError(f"Unsupported platform for saving: {platform}")
+
+    session.add(blog)
+    return blog

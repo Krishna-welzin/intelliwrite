@@ -3,7 +3,7 @@ from typing import Optional
 
 from agno.vectordb.qdrant import Qdrant
 from agno.knowledge.embedder.google import GeminiEmbedder
-from config.settings import Config
+from aeo_blog_engine.config.settings import Config
 
 
 class _InMemoryKnowledge:

@@ -1,4 +1,4 @@
-from agents import get_researcher_agent, get_planner_agent, get_writer_agent, get_optimizer_agent, get_base_model
+from aeo_blog_engine.agents import get_researcher_agent, get_planner_agent, get_writer_agent, get_optimizer_agent, get_base_model, get_reddit_agent, get_linkedin_agent, get_twitter_agent, get_social_qa_agent
 from agno.agent import Agent
 from langfuse import observe, Langfuse
 
@@ -44,7 +44,8 @@ class AEOBlogPipeline:
             instructions=["""You are the Final Editor. Your goal is to produce the final, publish-ready markdown file.
             1. Take the Draft and apply the improvements from the Optimization Report.
             2. Ensure the formatting is perfect Markdown.
-            3. STRICTLY output ONLY the blog content. No "Here is the blog" conversation."""],
+            3. STRICTLY output ONLY the blog content. No \"Here is the blog\" conversation.
+            """],
             markdown=True
         )
         final_response = finalizer.run(f"Draft:\n{draft}\n\nOptimization Suggestions:\n{optimization_report}\n\nProduce the Final Blog Post.", stream=False)
@@ -83,6 +84,84 @@ class AEOBlogPipeline:
             print(f"Note: Could not capture token usage: {e}")
 
         return final_response.content
+
+    # ----------------- Social Media Posts -----------------
+
+    @observe()
+    def run_social_post(self, topic: str, platform: str):
+        print(f"--- Starting Social Post Generation for: {topic} ({platform}) ---")
+
+        # 1. Research (Reusing the researcher from the blog flow)
+        print("\n[1/3] Researching...")
+        researcher = get_researcher_agent()
+        research_response = researcher.run(
+            f"Research key facts and trends about: {topic}",
+            stream=False
+        )
+        research_summary = research_response.content
+        print(f"Research completed ({len(research_summary)} chars).")
+
+        # 2. Write Post
+        print(f"\n[2/3] Writing {platform} post...")
+
+        if platform.lower() == "reddit":
+            writer = get_reddit_agent()
+        elif platform.lower() == "linkedin":
+            writer = get_linkedin_agent()
+        elif platform.lower() == "twitter":
+            writer = get_twitter_agent()
+        else:
+            raise ValueError(f"Unsupported platform: {platform}")
+
+        # Pass the research as context to the social writer
+        prompt = (
+            f"Topic: '{topic}'\n\n"
+            f"Context/Research:\n{research_summary}"
+        )
+
+        draft_response = writer.run(prompt, stream=False)
+        draft_content = draft_response.content
+        
+        # 3. QA & Refine
+        print(f"\n[3/3] QA Checking for {platform} compliance...")
+        qa_agent = get_social_qa_agent()
+        qa_response = qa_agent.run(
+            f"Platform: {platform}\nDraft Post:\n{draft_content}\n\nReview and fix if necessary.",
+            stream=False
+        )
+        final_content = qa_response.content
+
+        # --- Capture Aggregate Token Usage for Social ---
+        try:
+            total_input_tokens = 0
+            total_output_tokens = 0
+            
+            responses = [research_response, draft_response, qa_response]
+            for resp in responses:
+                if hasattr(resp, 'metrics') and resp.metrics:
+                    total_input_tokens += getattr(resp.metrics, "input_tokens", 0)
+                    total_output_tokens += getattr(resp.metrics, "output_tokens", 0)
+            
+            generation = langfuse.start_generation(
+                name=f"Social_Post_Usage_{platform}",
+                model="gemini-flash-latest",
+                input=topic,
+                output=final_content,
+                usage_details={
+                    "prompt_tokens": total_input_tokens,
+                    "completion_tokens": total_output_tokens,
+                    "total_tokens": total_input_tokens + total_output_tokens
+                },
+                metadata={
+                    "source": "agno-agent-social",
+                    "platform": platform
+                }
+            )
+            generation.end()
+        except Exception as e:
+            print(f"Note: Could not capture token usage: {e}")
+
+        return final_content
 
 if __name__ == "__main__":
     pipeline = AEOBlogPipeline()

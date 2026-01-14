@@ -125,3 +125,27 @@ Agents should treat these as conceptual anchors, not as sources to quote or summ
 *   Schema.org FAQPage: https://schema.org/FAQPage​
 *   General AEO best‑practices resources (non‑authoritative but useful for intuition): reputable AEO guides and checklists.​
 *   GEO best‑practices: introductions to optimizing for generative engines and AI overviews.​
+
+# Part 8 — Platform-Specific Adaptation Rules (Agents Only)
+
+* Reddit Writer Agent
+- Apply AEO principles conceptually, not structurally (no H1/H2).
+- Lead with a clear direct answer or insight in the first 1–2 sentences.
+- Use short paragraphs or bullet points for scannability.
+- Ask a thoughtful follow-up question to encourage discussion.
+- Do NOT use schema markup or formal blog formatting.
+
+* LinkedIn Writer Agent
+- Adapt answer-first into a strong opening insight or takeaway.
+- Use short paragraphs (1–2 lines) for feed readability.
+- Maintain professional, authoritative tone.
+- Avoid hashtags overload; use only when relevant.
+- Do NOT use JSON-LD or explicit schema references.
+
+* Twitter (X) Writer Agent
+- Convert answer-first into:
+   A hook tweet (clear, direct insight), followed by
+   Optional threaded clarification tweets.
+- Each tweet must stand alone and remain under platform limits.
+- No schema, headings, or long explanations.
+- Prioritize clarity and memorability over completeness.

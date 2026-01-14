@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from config.settings import Config
+from aeo_blog_engine.config.settings import Config
 
 if not Config.DATABASE_URL:
     raise ValueError("DATABASE_URL must be set in environment variables")

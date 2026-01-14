@@ -15,6 +15,11 @@ class Blog(Base):
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
     topic = Column(Text)
     status = Column(String, nullable=False, server_default="PENDING")
+    
+    # Social Media Content
+    twitter_post = Column(Text, nullable=True)
+    linkedin_post = Column(Text, nullable=True)
+    reddit_post = Column(Text, nullable=True)
 
     def to_dict(self):
         return {
@@ -26,4 +31,7 @@ class Blog(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "topic": self.topic,
             "status": self.status,
+            "twitter_post": self.twitter_post,
+            "linkedin_post": self.linkedin_post,
+            "reddit_post": self.reddit_post,
         }
