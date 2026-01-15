@@ -1,10 +1,5 @@
 {
   "version": 2,
-  "functions": {
-    "api/index.py": {
-      "runtime": "python3.10"
-    }
-  },
   "rewrites": [
     {
       "source": "/(.*)",
@@ -12,6 +7,6 @@
     }
   ],
   "env": {
-    "PYTHONPATH": "."
+      "PYTHONPATH": "."
   }
 }
