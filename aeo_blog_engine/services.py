@@ -19,9 +19,10 @@ def _get_or_create_blog(session, *, user_id: str, company_url: str, topic: str, 
     blog = get_blog_by_user_and_company(session, user_id=user_id, company_url=company_url)
     if blog:
         # Ensure topic is tracked
-        topics = blog.topic or []
-        if topic and topic not in topics:
-            topics.append(topic)
+        topics = Blog.ensure_entries(blog.topic)
+        contents = Blog.entry_contents(topics)
+        if topic and topic not in contents:
+            topics.append(Blog.make_entry(topic))
             blog.topic = topics
         session.add(blog)
         session.flush()
