@@ -3,7 +3,7 @@ import os
 from werkzeug.utils import secure_filename
 
 from aeo_blog_engine.database import get_blog_by_id, get_session
-from aeo_blog_engine.services import generate_and_store_blog
+from aeo_blog_engine.services import generate_and_store_blog, store_social_post
 from aeo_blog_engine.knowledge.ingest import ingest_docs
 from aeo_blog_engine.pipeline.blog_workflow import AEOBlogPipeline
 
@@ -85,15 +85,17 @@ def create_blog():
 def generate_social_post():
     """
     Generates a social media post for a given topic and platform.
-    Expected JSON body: {"topic": "...", "platform": "twitter|reddit|linkedin"}
+    Expected JSON body: {"topic": "...", "platform": "twitter|reddit|linkedin", "user_id": "...", "company_url": "..."}
     """
     data = request.get_json(force=True)
     
     topic = data.get("topic")
     platform = data.get("platform")
+    user_id = data.get("user_id")
+    company_url = data.get("company_url")
     
-    if not topic or not platform:
-        return jsonify({"error": "Both 'topic' and 'platform' are required."}), 400
+    if not topic or not platform or not user_id or not company_url:
+        return jsonify({"error": "'topic', 'platform', 'user_id', and 'company_url' are required."}), 400
         
     valid_platforms = ["reddit", "linkedin", "twitter"]
     if platform.lower() not in valid_platforms:
@@ -102,12 +104,14 @@ def generate_social_post():
     try:
         pipeline = AEOBlogPipeline()
         post_content = pipeline.run_social_post(topic, platform)
+        saved = store_social_post(user_id, company_url, topic, platform, post_content)
         
         return jsonify({
             "status": "success",
             "topic": topic,
             "platform": platform,
-            "content": post_content
+            "content": post_content,
+            "blog": saved
         }), 200
         
     except Exception as exc:

@@ -29,6 +29,11 @@ def main():
         help="Company URL to store with the generated blog"
     )
     parser.add_argument(
+        "--user-id",
+        type=str,
+        help="User ID associated with the generated content"
+    )
+    parser.add_argument(
         "--email",
         type=str,
         help="Contact email to store with the generated blog"
@@ -71,18 +76,22 @@ def main():
             print(post)
             
             # Save to database
-            try:
-                saved = store_social_post(topic, args.platform, post)
-                print(f"\n[DB] Saved {args.platform} post to Blog ID: {saved['id']}")
-            except Exception as e:
-                print(f"\n[DB Error] Could not save post: {e}")
+            if not args.user_id or not args.company_url:
+                print("\n[WARN] Cannot store social post without --user-id and --company-url")
+            else:
+                try:
+                    saved = store_social_post(args.user_id, args.company_url, topic, args.platform, post)
+                    print(f"\n[DB] Saved {args.platform} post to Blog ID: {saved['id']}")
+                except Exception as e:
+                    print(f"\n[DB Error] Could not save post: {e}")
 
-        elif args.company_url:
+        elif args.company_url and args.user_id:
             # Generate blog and store it
             payload = {
                 "topic": topic,
                 "prompt": args.prompt, # Pass prompt for context/logging if needed
                 "company_url": args.company_url,
+                "user_id": args.user_id,
                 "email_id": args.email,
                 "brand_name": args.brand,
             }
