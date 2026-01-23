@@ -1,107 +1,129 @@
-import os
 import sys
-# import asyncio # No longer needed
+from dotenv import load_dotenv
+import os
 from pathlib import Path
 from uuid import uuid4
+import time
 
+# Load .env file
+load_dotenv()
+
+# Add parent folder of 'aeo_blog_engine' to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from qdrant_client.http.models import PointStruct
 from aeo_blog_engine.knowledge.knowledge_base import get_knowledge_base
-from qdrant_client.http.models import PointStruct, models # Import Qdrant models
+
 try:
     from pypdf import PdfReader
 except ImportError:
     PdfReader = None
 
-def ingest_docs(): # No longer async
+# Map brands to their industries
+BRAND_INDUSTRY = {
+    "LAYS": "Food",
+    "Boat": "Direct-to-consumer brand (D2C)",
+    "Creative_Gaga": "Media/Entertainment",
+    "Formula_1": "Motorsports",
+    "JBL": "Sound",
+    "KNK_Design_Studio": "SaaS (B2B software)",
+    "LinkedIn": "b2c",
+    "Media_Wall_Street": "Business & Development",
+    "Minimalist": "Skincare",
+    "MIVI": "Sound",
+    "Nike": "Apparel & Fashion",
+    "Nothing": "Mobile",
+    "OUD_ARABIA": "Perfume",
+    "Premier_Tickets": "E-commerce platforms",
+    "Welzin": "AI/ML"
+}
+
+# Change this to the industry you want for the sample KB
+TARGET_INDUSTRY = "Sound"
+
+def ingest_sample_kb():
     """
-    Reads markdown/text/pdf files from the docs/ directory, embeds them, and loads them directly into Qdrant.
+    Reads markdown/text files from docs/, filters by TARGET_INDUSTRY,
+    and loads them into a new Qdrant collection 'brand_knowledge_base_sample'.
     """
-    vector_db = get_knowledge_base() # This is the agno.vectordb.qdrant.Qdrant instance
-    qdrant_client = vector_db.client # Get the underlying QdrantClient
-    embedder = vector_db.embedder # Get the OpenAIEmbedder
-    collection_name = vector_db.collection
+    vector_db = get_knowledge_base()
+    qdrant_client = vector_db.client
+    embedder = vector_db.embedder
+
+    # New collection for sample KB
+    collection_name = "brand_knowledge_base_sample"
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     docs_dir = Path(os.path.join(current_dir, "docs"))
-    
-    print(f"Scanning for documents in: {docs_dir}")
-    
-    points_to_upsert = []
+
+    print(f"Scanning documents for industry '{TARGET_INDUSTRY}' in {docs_dir}")
 
     for root, _, files in os.walk(docs_dir):
+        path_parts = Path(root).relative_to(docs_dir).parts
+        brand = path_parts[0] if path_parts else "general"
+
+        # Skip brands not in the target industry
+        if BRAND_INDUSTRY.get(brand) != TARGET_INDUSTRY:
+            continue
+
         for file_name in files:
-            content = ""
+            if not (file_name.endswith(".md") or file_name.endswith(".txt")):
+                continue
+
             file_path = Path(root) / file_name
+            try:
+                content = file_path.read_text(encoding='utf-8')
+            except Exception as e:
+                print(f"Error reading {file_path}: {e}")
+                continue
 
-            if file_name.endswith(".md") or file_name.endswith(".txt"):
-                print(f"Found text file: {file_path}")
-                try:
-                    content = file_path.read_text(encoding='utf-8')
-                except Exception as e:
-                    print(f"Error reading text file {file_path}: {e}")
-                    continue
-            
-            elif file_name.endswith(".pdf"):
-                print(f"Found PDF file: {file_path}")
-                if PdfReader is None:
-                    print(f"Skipping PDF {file_path}: pypdf not installed.")
-                    continue
-                try:
-                    reader = PdfReader(str(file_path))
-                    for page in reader.pages:
-                        text = page.extract_text()
-                        if text:
-                            content += text + "\n"
-                except Exception as e:
-                    print(f"Error reading PDF file {file_path}: {e}")
-                    continue
-            
-            if content:
-                if not content.strip():
-                    print(f"Skipping empty file: {file_path}")
-                    continue
+            if not content.strip():
+                continue
 
-                try:
-                    # Generate embedding for the entire file content
-                    # For larger files, a proper chunking strategy would be needed.
-                    # For now, we'll embed the whole file content.
-                    embedding = embedder.get_embedding(content) # No await
+            try:
+                # Retry logic for 429 (rate limit)
+                max_retries = 5
+                retry_delay = 10
+                for attempt in range(max_retries):
+                    try:
+                        embedding = embedder.get_embedding(content)
+                        break
+                    except Exception as e:
+                        if "429" in str(e) and attempt < max_retries - 1:
+                            print(f"Rate limit hit for {file_name}. Retrying in {retry_delay}s...")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2
+                        else:
+                            raise e
 
-                    points_to_upsert.append(PointStruct(
-                        id=str(uuid4()), # Generate a unique ID for each point
-                        vector=embedding,
-                        payload={
-                            "name": file_name,
-                            "meta_data": {"file_path": str(file_path)}, # Required by agno
-                            "content": content, # Often expected by agno
-                            "content_preview": content[:200]
-                        }
-                    ))
-                except Exception as e:
-                    print(f"Error embedding/processing file {file_path}: {e}")
+                point = PointStruct(
+                    id=str(uuid4()),
+                    vector=embedding,
+                    payload={
+                        "name": file_name,
+                        "brand": brand,
+                        "file_name": file_name,
+                        "source": "profile_md",
+                        "industry": TARGET_INDUSTRY,
+                        "content": content,
+                        "content_preview": content[:200]
+                    }
+                )
 
-    if points_to_upsert:
-        print(f"Upserting {len(points_to_upsert)} points to Qdrant collection '{collection_name}'...")
-        try:
-            # Clean start: Delete collection if it exists to remove old incompatible points
-            if qdrant_client.collection_exists(collection_name=collection_name):
-                qdrant_client.delete_collection(collection_name=collection_name)
-            
-            qdrant_client.create_collection(
-                collection_name=collection_name,
-                vectors_config=models.VectorParams(size=len(points_to_upsert[0].vector), distance=models.Distance.COSINE),
-            )
-            
-            operation_info = qdrant_client.upsert(
-                collection_name=collection_name,
-                wait=True,
-                points=points_to_upsert
-            )
-            print(f"Upsert operation info: {operation_info}")
-            print("Ingestion complete.")
-        except Exception as e:
-            print(f"Error during Qdrant upsert: {e}")
-    else:
-        print("No documents found to ingest.")
+                # Upsert to Qdrant
+                qdrant_client.upsert(
+                    collection_name=collection_name,
+                    points=[point],
+                    wait=True
+                )
+
+                print(f"✓ Saved {file_name} for brand {brand} to sample KB")
+
+            except Exception as e:
+                print(f"Error processing {brand}: {e}")
+
+    print("Sample KB ingestion complete.")
+
 
 if __name__ == "__main__":
-    ingest_docs() # Call directly, no asyncio.run
+    ingest_sample_kb()

@@ -63,6 +63,43 @@ def get_knowledge_base():
             api_key=Config.QDRANT_API_KEY,
             embedder=GeminiEmbedder(api_key=Config.GEMINI_API_KEY),
         )
+        # Monkey-patch _build_search_results to tolerate payloads that use
+        # 'brand' or 'file_name' instead of 'name'. Some collections were
+        # indexed without a 'name' field; the agno client expects 'name'.
+        try:
+            orig_build = getattr(_cached_vector_db, "_build_search_results", None)
+            if orig_build:
+                def _patched_build_search_results(results, query):
+                    # Normalize payloads so the agno client can find expected keys
+                    for r in results:
+                        try:
+                            payload = getattr(r, 'payload', None) or (r.get('payload') if isinstance(r, dict) else None)
+                            if payload is None:
+                                continue
+
+                            # Ensure a 'name' is present (some ingests use 'brand' or 'file_name')
+                            if 'name' not in payload:
+                                payload['name'] = payload.get('brand') or payload.get('file_name') or 'unknown'
+
+                            # Ensure a 'meta_data' dict exists; populate with sensible fallbacks
+                            if 'meta_data' not in payload or not isinstance(payload.get('meta_data'), dict):
+                                payload['meta_data'] = {
+                                    'name': payload.get('name'),
+                                    'brand': payload.get('brand'),
+                                    'file_name': payload.get('file_name'),
+                                    'source': payload.get('source'),
+                                    'industry': payload.get('industry')
+                                }
+                        except Exception:
+                            # Don't let payload normalization break the search
+                            continue
+                    return orig_build(results, query)
+
+                # Bind the patched function to the instance
+                setattr(_cached_vector_db, "_build_search_results", _patched_build_search_results)
+        except Exception:
+            # If monkey-patching fails, continue and rely on fallback behavior
+            pass
         # Trigger a lightweight call to surface connection issues early
         if hasattr(_cached_vector_db, "client"):
             _cached_vector_db.client.get_collections()
